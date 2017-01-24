@@ -1,4 +1,4 @@
-package com.somewan.product;
+package com.somewan;
 
 /**
  * Hello world!
