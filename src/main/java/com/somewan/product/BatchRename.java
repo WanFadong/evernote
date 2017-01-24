@@ -29,7 +29,8 @@ public class BatchRename {
     private static final String SUFFIX = ".html";
     private static final String UNTITLE = "无标题";
 
-    private static final String AUTH_TOKEN = "S=s1:U=934d7:E=16120bd6219:C=159c90c32e8:P=1cd:A=en-devtoken:V=2:H=7122c7783d7d70457e0a11b24eafbbda";
+    private static final String AUTH_TOKEN = "S=s50:U=99f2ca:E=16127f24773:C=159d04117e0:P=1cd:A=en-devtoken:V=2:H=eaca86adc3ca3c73286cc6abd78756b7";
+    //private static final String AUTH_TOKEN = "S=s1:U=934d7:E=1612814d623:C=159d063a788:P=1cd:A=en-devtoken:V=2:H=f1070a8b785acf68eec552499344e43f";
     private UserStoreClient userStore;
     private NoteStoreClient noteStore;
 
@@ -40,7 +41,8 @@ public class BatchRename {
      */
     public BatchRename(String token) throws EDAMUserException, EDAMSystemException, TException, TTransportException{
         // Set up the UserStore client and check that we can speak to the server
-        EvernoteAuth evernoteAuth = new EvernoteAuth(EvernoteService.SANDBOX, token);//TODO 沙盒的Auth
+        EvernoteAuth evernoteAuth = new EvernoteAuth(EvernoteService.YINXIANG, token);// 这里在沙盒环境要改为EvernoteService.Sandbox!!
+        //EvernoteAuth evernoteAuth = new EvernoteAuth(EvernoteService.SANDBOX, token);
         ClientFactory factory = new ClientFactory(evernoteAuth);
         userStore = factory.createUserStoreClient();
 
@@ -64,15 +66,17 @@ public class BatchRename {
         // 官方文档有说明，返回的notebooks不可能为null
         LOG.info("获取到的笔记本列表数量：{} ", notebooks.size());
 
-        // 获取每个笔记，重命名
+        int count = 0;
         int updateCount = 0;
         int unUpdateCount = 0;
+        // 获取每个笔记，重命名
         for(Notebook notebook: notebooks) {
             LOG.info("笔记本名称：{}", notebook.getName());
 
             // 获取metadata
             // 创建filter
             NoteFilter filter =  new NoteFilter();
+            filter.setWords("intitle:html");
             filter.setNotebookGuid(notebook.getGuid());
             filter.setAscending(true);
             // 创建resultspc
@@ -84,7 +88,9 @@ public class BatchRename {
 
             //根据metadata（guid），获取笔记
             for(NoteMetadata noteMetadata: notesMetadataList.getNotes()) {
+                count++;
                 Note note = noteStore.getNote(noteMetadata.getGuid(),false,false,false, false);
+                LOG.info("正在处理第({})条笔记：({})", count, note.getTitle());
                 //修改笔记标题
                 boolean update = renameNote(note);
                 if(update) {
@@ -93,6 +99,11 @@ public class BatchRename {
                 } else {
                     unUpdateCount++;
                 }
+//                if(updateCount + unUpdateCount >= 10) {
+//                    LOG.info("共{}条笔记；重命名了{}条笔记；未重命名{}条笔记", updateCount + unUpdateCount, updateCount, unUpdateCount);
+//                    LOG.info("灰度重命名结束。");
+//                    return;
+//                }
             }
         }
         LOG.info("共{}条笔记；重命名了{}条笔记；未重命名{}条笔记", updateCount + unUpdateCount, updateCount, unUpdateCount);
@@ -112,15 +123,15 @@ public class BatchRename {
         int index = title.indexOf(SUFFIX);
         switch(index) {
             case -1:
-                LOG.info("笔记：{} 标题未修改", note.getTitle());
+                LOG.info("笔记：标题未修改", note.getTitle());
                 return false;
             case 0:
                 note.setTitle(UNTITLE);
-                LOG.info("笔记：{} 标题已修改", note.getTitle());
+                LOG.info("笔记：标题已修改为({})", note.getTitle());
                 return true;
             default:
-                note.setTitle(title.substring(0, index));
-                LOG.info("笔记：{} 标题已修改", note.getTitle());
+                note.setTitle(title.substring(0, index).trim());
+                LOG.info("笔记：标题已修改为({})", note.getTitle());
                 return true;
         }
     }
@@ -129,6 +140,9 @@ public class BatchRename {
         BatchRename batchRename;
         try {
             batchRename = new BatchRename(AUTH_TOKEN);
+        } catch (EDAMSystemException e) {
+            LOG.error("System error: " + e.getErrorCode().toString());
+            return;
         } catch(Exception e) {
             LOG.error("初始化BatchRename失败",e);
             return;
@@ -153,7 +167,7 @@ public class BatchRename {
                         + " parameter: " + e.getParameter());
             }
         } catch (EDAMSystemException e) {
-            LOG.error("System error: " + e.getErrorCode().toString());
+            LOG.error("System error: " + e.getErrorCode().toString() + e.getRateLimitDuration() + "s后再试。");
         } catch (TTransportException t) {
             LOG.error("Networking error: " + t.getMessage());
         } catch (Exception e) {
